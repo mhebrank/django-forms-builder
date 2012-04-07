@@ -17,6 +17,7 @@ from forms_builder.forms.models import FormEntry, FieldEntry
 from forms_builder.forms import settings
 from forms_builder.forms.formulas import FormulaCalculator
 
+import parser
 
 fs = FileSystemStorage(location=settings.UPLOAD_ROOT)
 
@@ -154,6 +155,45 @@ class FormForForm(forms.ModelForm):
             if field.is_a(fields.EMAIL):
                 return self.cleaned_data["field_%s" % field.id]
         return None
+
+    def _html_output(self, *args, **kwargs):
+        base_html = super(FormForForm, self)._html_output(*args, **kwargs)
+        formula_js = self.make_formula_javascript()
+        return mark_safe('%s\n%s' % (base_html, formula_js))
+
+
+    def make_formula_javascript(self):
+
+        formula_fields = []
+        for field in self.form_fields:
+            if field.default and field.default[0] == '=':
+                formula_fields.append(field)
+        
+        if not formula_fields:
+            return ""
+
+        formula_part_fields = []
+        for field in formula_fields:
+            try:
+                e = parser.expr(field.default[1:]).compile()
+                formula_part_fields.extend(list(e.co_names))
+            except:
+                pass
+        js = ['<script>']
+        for fp in formula_part_fields:
+            js.append("""document.getElementById('id_%(fp)s').addEventListener('change',function(){calculate_%(form)s(document.getElementById('id_%(fp)s'))});""" % {'fp':fp, 'form':self.form.id} )
+
+        js.append("""function calculate_%s(f) {""" % self.form.id)
+        for fp in formula_part_fields:
+            js.append("""%(fp)s = document.getElementById('id_%(fp)s').value * 1;""" % {'fp':fp} )
+
+        for field in formula_fields:
+            js.append("""document.getElementById('id_field_%(id)s').value = %(formula)s;"""% {'id':field.id, 'formula':field.default[1:]})
+            js.append("""field_%(id)s = document.getElementById('id_field_%(id)s').value * 1;""" % {'id':field.id} )
+        js.append("}")
+        js.append("</script>")
+        return "\n".join(js)
+
 
 class EntriesForm(forms.Form):
     """

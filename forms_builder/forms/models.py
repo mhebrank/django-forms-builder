@@ -265,7 +265,7 @@ class Field(AbstractField):
 
     class Meta:
         ordering = ("order",)
-        order_with_respect_to = "form"
+        #order_with_respect_to = "form"
 
     def save(self, *args, **kwargs):
         if self.order is None:
